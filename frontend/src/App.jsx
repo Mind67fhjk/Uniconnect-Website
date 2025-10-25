@@ -5,6 +5,7 @@ import Navbar from './components/Navbar';
 function App(){
 
     const [backendMessage, setBackendMessage] = useState("Loading message from backend...");
+    const [students, setStudents] = useState([]);
 
     useEffect(() => {
         const fetchBackendMessage = async () => {
@@ -21,6 +22,19 @@ function App(){
 
         fetchBackendMessage();
     }, []);
+
+    useEffect(() => {
+        const fetchStudents = async () => {
+            try {
+                const response = await fetch('http://localhost:3000/api/students');
+                const data = await response.json();
+                setStudents(data);
+            } catch (error) {
+                console.error("Error fetching students:", error);
+            }
+        };
+        fetchStudents();
+    }, []);
     return(
         <div>
             <Navbar/>
@@ -32,6 +46,26 @@ function App(){
                 <section style={{marginTop: 24}}>
                     <strong>Backend Says:</strong>
                     <div style={{marginTop: 8, fontSize: 18}}>{backendMessage}</div>
+                </section>
+
+                {/* Students list */}
+                <section style={{marginTop: 32, textAlign: 'left', maxWidth: 800, marginInline: 'auto'}}>
+                    <h2 style={{fontSize: 28, textAlign: 'center'}}>Students</h2>
+                    {Array.isArray(students) && students.length > 0 ? (
+                        <ul style={{marginTop: 12, fontSize: 18, lineHeight: 1.6}}>
+                            {students.map((s) => (
+                                <li key={s.id ?? `${s.name}-${s.university}-${s.created_at}`}>
+                                    <strong>{s.name}</strong>
+                                    {` — ${s.university}`}
+                                    {s.major ? `, ${s.major}` : ''}
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <div style={{marginTop: 12, fontSize: 18, textAlign: 'center'}}>
+                            No students yet. Add one via Thunder Client or curl, then refresh the page.
+                        </div>
+                    )}
                 </section>
             </main>
         </div>
