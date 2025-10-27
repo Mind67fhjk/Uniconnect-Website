@@ -91,3 +91,20 @@ app.post('/api/students', async (req, res) => {
 app.listen(port, () => {
     console.log(`Uniconnect Backend listening at http://localhost:${port}`);
 });
+
+
+// NEW: API endpoint to delete a student by ID
+app.delete('/api/students/:id', async (req, res) => {
+    const { id } = req.params; // Extract the ID from the URL parameters
+    try {
+        const result = await pool.query('DELETE FROM students WHERE id = $1 RETURNING *', [id]);
+        if (result.rows.length === 0) {
+            // If no rows were returned, it means no student with that ID was found
+            return res.status(404).json({ error: 'Student not found.' });
+        }
+        res.status(200).json({ message: 'Student deleted successfully!', deletedStudent: result.rows[0] });
+    } catch (err) {
+        console.error('Error deleting student:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});

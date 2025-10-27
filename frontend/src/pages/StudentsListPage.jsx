@@ -1,33 +1,67 @@
-import React, { useState, useEffect } from 'react'; // Import useState and useEffect hooks
+import React, { useState, useEffect, useCallback } from 'react'; // Import useCallback
 
 function StudentsListPage() {
-    const [students, setStudents] = useState([]); // State to store the list of students
-    const [loading, setLoading] = useState(true);  // State to manage loading status
-    const [error, setError] = useState(null);      // State to store any error messages
+    const [students, setStudents] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(null);
+    const [deleteMessage, setDeleteMessage] = useState(''); // New state for delete feedback
 
-    // useEffect hook to fetch students when the component mounts
-    useEffect(() => {
-        const fetchStudents = async () => {
-            try {
-                setLoading(true); // Set loading to true before fetching
-                const response = await fetch('http://localhost:3000/api/students'); // Make GET request
+    // Use useCallback to memoize the fetchStudents function.
+    // This is good practice when a function is passed as a dependency to useEffect
+    // or other hooks, to prevent unnecessary re-renders or re-executions.
+    const fetchStudents = useCallback(async () => {
+        try {
+            setLoading(true);
+            setError(null); // Clear previous errors
+            const response = await fetch('http://localhost:3000/api/students');
 
-                if (!response.ok) { // If response is not OK (e.g., 404, 500)
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                const data = await response.json(); // Parse the JSON response
-                setStudents(data); // Update the students state
-            } catch (err) {
-                console.error("Error fetching students:", err);
-                setError("Failed to load students. Please try again later."); // Set error state
-            } finally {
-                setLoading(false); // Set loading to false after fetch (whether success or error)
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
-        };
 
-        fetchStudents(); // Call the fetch function
-    }, []); // Empty dependency array means this effect runs only once after initial render
+            const data = await response.json();
+            setStudents(data);
+        } catch (err) {
+            console.error("Error fetching students:", err);
+            setError("Failed to load students. Please try again later.");
+        } finally {
+            setLoading(false);
+        }
+    }, []); // Dependencies for useCallback. Empty array means it's created once.
+
+    // useEffect to fetch students when the component mounts
+    useEffect(() => {
+        fetchStudents();
+    }, [fetchStudents]); // fetchStudents is a dependency now because it's wrapped in useCallback
+
+    // NEW: Function to handle student deletion
+    const handleDelete = async (studentId) => {
+        if (!window.confirm('Are you sure you want to delete this student?')) {
+            return; // User cancelled deletion
+        }
+
+        setDeleteMessage('Deleting student...'); // Provide feedback
+        try {
+            const response = await fetch(`http://localhost:3000/api/students/${studentId}`, {
+                method: 'DELETE', // Specify DELETE method
+            });
+
+            if (response.ok) {
+                setDeleteMessage('Student deleted successfully!');
+                // Refresh the student list after deletion
+                fetchStudents();
+            } else {
+                const errorData = await response.json();
+                setDeleteMessage(`Error: ${errorData.error || 'Failed to delete student.'}`);
+            }
+        } catch (err) {
+            console.error('Network error during deletion:', err);
+            setDeleteMessage('Error: Could not connect to the server for deletion.');
+        } finally {
+            // Clear delete message after a short delay
+            setTimeout(() => setDeleteMessage(''), 3000);
+        }
+    };
 
     return (
         <div style={{ padding: '20px', maxWidth: '800px', margin: 'auto' }}>
@@ -35,6 +69,7 @@ function StudentsListPage() {
 
             {loading && <p style={{ textAlign: 'center', color: '#3498db' }}>Loading students...</p>}
             {error && <p style={{ textAlign: 'center', color: 'red' }}>{error}</p>}
+            {deleteMessage && <p style={{ textAlign: 'center', color: deleteMessage.startsWith('Error') ? 'red' : 'green' }}>{deleteMessage}</p>}
 
             {!loading && !error && students.length === 0 && (
                 <p style={{ textAlign: 'center', color: '#7f8c8d' }}>No students registered yet. <a href="/add-student">Add one now!</a></p>
@@ -61,11 +96,15 @@ function StudentsListPage() {
                                 </p>
                                 <small style={{ color: '#95a5a6' }}>Registered: {new Date(student.created_at).toLocaleDateString()}</small>
                             </div>
-                            {/* You could add edit/delete buttons here later */}
-                            {/* <div>
-                                <button style={{ background: '#2ecc71', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', marginRight: '5px' }}>Edit</button>
-                                <button style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer' }}>Delete</button>
-                            </div> */}
+                            <div>
+                                {/* NEW Delete Button */}
+                                <button
+                                    onClick={() => handleDelete(student.id)}
+                                    style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', marginLeft: '10px' }}
+                                >
+                                    Delete
+                                </button>
+                            </div>
                         </li>
                     ))}
                 </ul>
