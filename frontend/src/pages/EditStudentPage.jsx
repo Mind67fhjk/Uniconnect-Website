@@ -1,94 +1,105 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom'; // Import useParams and useNavigate
+import React,{ useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 
-function EditStudentPage() {
-    const { id } = useParams(); // Get the 'id' from the URL parameter
+
+
+function EditStudentPage(){
+    const { id }  = useParams();
     const navigate = useNavigate();
     const [name, setName] = useState('');
-    const [university, setUniversity] = useState('');
     const [major, setMajor] = useState('');
+    const [university, setUniversity] = useState('');
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [message, setMessage] = useState(''); // For success/error feedback
+    const [error, setError] = useState(null);   
+    const [message, setMessage] =useState('');
 
-    // Effect to fetch the student's existing data when the component mounts
+
+
     useEffect(() => {
         const fetchStudent = async () => {
-            try {
+            try{
                 setLoading(true);
                 const response = await fetch(`http://localhost:3000/api/students/${id}`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+
+                if(!response.ok){
+                    throw new Error(`Http error! status: ${response.status}`);
                 }
+
                 const data = await response.json();
                 setName(data.name);
-                setUniversity(data.university);
                 setMajor(data.major);
-            } catch (err) {
-                console.error("Error fetching student for edit:", err);
+                setUniversity(data.university);
+
+            }catch(err){
+                console.error("Failed to fetch student for edit", err);
                 setError("Failed to load student data for editing.");
-            } finally {
+            }finally{
                 setLoading(false);
             }
         };
 
-        if (id) { // Only fetch if an ID is present
+        if(id){
             fetchStudent();
         }
-    }, [id]); // Re-run if ID changes (though for this page, it won't)
+    }, [id]);
 
-    // Handler for form submission (updating the student)
-    const handleSubmit = async (e) => {
+// Handler for form submission (updating the student)
+
+    const handleSubmit = async(e) => {
         e.preventDefault();
-        setMessage('Updating student data...');
+        setMessage('Updating the data...');
 
-        try {
-            const response = await fetch(`http://localhost:3000/api/students/${id}`, {
-                method: 'PUT', // Specify the HTTP method as PUT
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ name, university, major }),
-            });
+        try{
+            const response = await fetch(`http://localhost:3000/api/students/${id}` ,{
+                    method: 'PUT',
+                    headers:{
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name, major, university })
+                });
 
-            if (response.ok) {
-                const updatedStudent = await response.json();
-                setMessage(`Student '${updatedStudent.name}' updated successfully!`);
-                // Redirect to the students list page after a short delay
-                setTimeout(() => navigate('/students'), 2000);
-            } else {
-                const errorData = await response.json();
-                setMessage(`Error: ${errorData.error || 'Failed to update student.'}`);
-            }
-        } catch (error) {
-            console.error('Network error or server down during update:', error);
+                if(response.ok){
+                    const updatedStudent = await response.json();
+                    setMessage(`Student ${updatedStudent.name} updated successfully!`);
+
+                    setTimeout(() => 
+                    {
+                        navigate('/students');
+                    },2000);
+                }else{
+                    const errorData = await response.json();
+                    setMessage(`Error: ${errorData.error || 'Failed to update student.'}`);
+                }
+        }catch(err){
+            console.error('Network error or server down during update', err);
             setMessage('Error: Could not connect to the server for update.');
         }
     };
 
-    if (loading) {
-        return <p style={{ textAlign: 'center', padding: '20px' }}>Loading student data...</p>;
+    if(loading){
+        return <p style={{ textAlign: 'center', padding:'20px'}}>Loading student data .....</p>
     }
 
-    if (error) {
+    if(error){
         return <p style={{ textAlign: 'center', padding: '20px', color: 'red' }}>{error}</p>;
-    }
-
-    return (
+        }
+        
+        
+    return(
         <div style={{ padding: '20px', maxWidth: '500px', margin: 'auto', border: '1px solid #ccc', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
             <h2 style={{ textAlign: 'center', color: '#2c3e50' }}>Edit Student Profile (ID: {id})</h2>
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                 <div>
-                    <label htmlFor="name" style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Student Name:</label>
-                    <input
-                        type="text"
-                        id="name"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        required
-                        style={{ width: '100%', padding: '10px', border: '1px solid #bdc3c7', borderRadius: '4px' }}
-                    />
+                    <label htmlFor="name" style={{ display:'block', marginBottom: '5px', fontWeight: 'bold'}}>Student Name: </label>
+                    <input type="text"
+                           id="name"
+                           value ={name}
+                           onChange={e=>setName(e.target.value)}
+                           required
+                           style={{ width: '100%' , padding: '10px' , border: '1px solid #bdc3c7', borderRadius: '4px'}}
+                     />
                 </div>
+
                 <div>
                     <label htmlFor="university" style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>University:</label>
                     <input
@@ -111,7 +122,9 @@ function EditStudentPage() {
                         style={{ width: '100%', padding: '10px', border: '1px solid #bdc3c7', borderRadius: '4px' }}
                     />
                 </div>
-                <button
+
+
+               <button
                     type="submit"
                     style={{
                         padding: '10px 15px',

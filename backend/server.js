@@ -2,6 +2,8 @@ require('dotenv').config(); // Load environment variables from .env file
 
 const express = require('express');
 const cors = require('cors');
+const bcrypt = require('bcrypt');// import bcrypt for password hashing
+const saltRounds = 10;
 const { Pool } = require('pg'); // Import Pool from 'pg'
 const app = express();
 const port = 3000;
@@ -48,6 +50,25 @@ async function createStudentsTable() {
 }
 createStudentsTable(); // Call this function when the server starts
 
+
+
+async function createUsersTable() {
+    try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                email VARCHAR(255) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        console.log('Users table ensured to exist.');
+    } catch (err) {
+        console.error('Error creating users table:', err);
+    }
+}
+createUsersTable(); 
+
 // Middleware:
 app.use(cors());
 app.use(express.json());
@@ -87,12 +108,6 @@ app.post('/api/students', async (req, res) => {
 });
 
 
-// Start the server
-app.listen(port, () => {
-    console.log(`Uniconnect Backend listening at http://localhost:${port}`);
-});
-
-
 // NEW: API endpoint to delete a student by ID
 app.delete('/api/students/:id', async (req, res) => {
     const { id } = req.params; // Extract the ID from the URL parameters
@@ -107,4 +122,77 @@ app.delete('/api/students/:id', async (req, res) => {
         console.error('Error deleting student:', err);
         res.status(500).json({ error: 'Internal server error' });
     }
+});
+
+
+app.get('/api/students/:id', async (req, res) => {
+    const { id } = req.params;
+
+    try{
+         const result = await pool.query('SELECT * FROM students WHERE id = $1', [id]);
+
+             if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Student not found.' });
+        }
+        res.status(200).json(result.rows[0]);
+    }catch(err){
+        console.error('Error fetching a single student:', err);
+        res.status(500).json({ error: 'Internal server error'});
+    }
+});
+
+
+app.put('/api/students/:id', async (req, res) => {
+    const {id} = req.params;
+    const {name, university, major} = req.body;
+
+    if(!name || !university || !major){
+        res.status(400).json({ error: 'Name, University, and Major are required to update a student information.'});
+    }
+
+    try{
+        const result = await pool.query(`
+            UPDATE students SET name = $1, university = $2, major = $3, created_at = CURRENT_TIMESTAMP WHERE id = $4 RETURNING *
+        `, [name, university, major, id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'Student not found.' });
+        }
+        res.status(200).json(result.rows[0]);
+    }catch(err){
+        console.error('Error updating student:', err);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+})
+
+
+// NEW: User Registration Endpoint
+app.post('/api/register', async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) {
+        return res.status(400).json({ error: 'Email and password are required.' });
+    }
+    try {
+        // Check if user already exists
+        const existingUser = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+        if (existingUser.rows.length > 0) {
+            return res.status(409).json({ error: 'User with this email already exists.' });
+        }
+        // Hash the password
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+    console.log(`[register] email=${email} hash=${passwordHash}`);
+        // Insert new user into the database
+        const result = await pool.query(
+            'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
+            [email, passwordHash]
+        );
+        // Respond with new user details (excluding password_hash)
+        res.status(201).json({ message: 'User registered successfully!', user: result.rows[0] });
+    } catch (err) {
+        console.error('Error during user registration:', err);
+        res.status(500).json({ error: 'Internal server error during registration.' });
+    }
+});
+// Start the server
+app.listen(port, () => {
+    console.log(`Uniconnect Backend listening at http://localhost:${port}`);
 });
