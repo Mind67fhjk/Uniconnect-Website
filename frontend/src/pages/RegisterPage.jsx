@@ -25,8 +25,8 @@ function RegisterPage() {
                 setMessage(data.message);
                 setEmail('');
                 setPassword('');
-                // Stay on the page to show success clearly.
-                // Optionally redirect later: setTimeout(() => navigate('/login'), 2000)
+                // Optionally, redirect to login page after successful registration
+                setTimeout(() => navigate('/login'), 2000); // We'll build /login next
             } else {
                 const errorData = await response.json();
                 setMessage(`Error: ${errorData.error || 'Failed to register.'}`);

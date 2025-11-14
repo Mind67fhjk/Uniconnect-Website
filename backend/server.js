@@ -1,12 +1,12 @@
-require('dotenv').config(); // Load environment variables from .env file
+require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
-const bcrypt = require('bcrypt');// import bcrypt for password hashing
-const saltRounds = 10;
-const { Pool } = require('pg'); // Import Pool from 'pg'
+const { Pool } = require('pg');
+const bcrypt = require('bcrypt'); // import bcrypt for password hashing
 const app = express();
 const port = 3000;
+const saltRounds = 10; // For bcrypt: the cost factor for hashing
 
 // Database connection pool setup
 const pool = new Pool({
@@ -23,7 +23,7 @@ pool.connect((err, client, release) => {
         return console.error('Error acquiring client', err.stack);
     }
     client.query('SELECT NOW()', (err, result) => {
-        release(); // Release the client back to the pool
+        release();
         if (err) {
             return console.error('Error executing query', err.stack);
         }
@@ -48,10 +48,9 @@ async function createStudentsTable() {
         console.error('Error creating students table:', err);
     }
 }
-createStudentsTable(); // Call this function when the server starts
+createStudentsTable();
 
-
-
+// Create a 'users' table if it doesn't exist
 async function createUsersTable() {
     try {
         await pool.query(`
@@ -67,7 +66,7 @@ async function createUsersTable() {
         console.error('Error creating users table:', err);
     }
 }
-createUsersTable(); 
+createUsersTable(); // Call this function when the server starts
 
 // Middleware:
 app.use(cors());
@@ -78,7 +77,7 @@ app.get('/api/message', (req, res) => {
     res.json({ message: "Hello from Uniconnect Backend!" });
 });
 
-// NEW: API endpoint to get all students
+// API endpoint to get all students
 app.get('/api/students', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM students ORDER BY created_at DESC');
@@ -89,7 +88,7 @@ app.get('/api/students', async (req, res) => {
     }
 });
 
-// NEW: API endpoint to add a new student
+// API endpoint to add a new student
 app.post('/api/students', async (req, res) => {
     const { name, university, major } = req.body;
     if (!name || !university || !major) {
@@ -108,7 +107,7 @@ app.post('/api/students', async (req, res) => {
 });
 
 
-// NEW: API endpoint to delete a student by ID
+// API endpoint to delete a student by ID
 app.delete('/api/students/:id', async (req, res) => {
     const { id } = req.params; // Extract the ID from the URL parameters
     try {
@@ -148,6 +147,7 @@ app.put('/api/students/:id', async (req, res) => {
 
     if(!name || !university || !major){
         res.status(400).json({ error: 'Name, University, and Major are required to update a student information.'});
+        return;
     }
 
     try{
@@ -165,33 +165,40 @@ app.put('/api/students/:id', async (req, res) => {
 })
 
 
-// NEW: User Registration Endpoint
+// User Registration Endpoint
 app.post('/api/register', async (req, res) => {
     const { email, password } = req.body;
+
     if (!email || !password) {
         return res.status(400).json({ error: 'Email and password are required.' });
     }
+
     try {
         // Check if user already exists
         const existingUser = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
         if (existingUser.rows.length > 0) {
             return res.status(409).json({ error: 'User with this email already exists.' });
         }
+
         // Hash the password
-    const passwordHash = await bcrypt.hash(password, saltRounds);
-    console.log(`[register] email=${email} hash=${passwordHash}`);
+        const passwordHash = await bcrypt.hash(password, saltRounds);
+
         // Insert new user into the database
         const result = await pool.query(
             'INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id, email, created_at',
             [email, passwordHash]
         );
+
         // Respond with new user details (excluding password_hash)
         res.status(201).json({ message: 'User registered successfully!', user: result.rows[0] });
+
     } catch (err) {
         console.error('Error during user registration:', err);
         res.status(500).json({ error: 'Internal server error during registration.' });
     }
 });
+
+
 // Start the server
 app.listen(port, () => {
     console.log(`Uniconnect Backend listening at http://localhost:${port}`);
