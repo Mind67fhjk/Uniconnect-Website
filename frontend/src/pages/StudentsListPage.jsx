@@ -1,134 +1,164 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom'; // Import useParams and useNavigate
+import React, { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-function EditStudentPage() {
-    const { id } = useParams(); // Get the 'id' from the URL parameter
-    const navigate = useNavigate();
-    const [name, setName] = useState('');
-    const [university, setUniversity] = useState('');
-    const [major, setMajor] = useState('');
+function StudentsListPage() {
+    const [students, setStudents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
-    const [message, setMessage] = useState(''); // For success/error feedback
+    const [deleteMessage, setDeleteMessage] = useState('');
+    const navigate = useNavigate();
 
-    // Effect to fetch the student's existing data when the component mounts
-    useEffect(() => {
-        const fetchStudent = async () => {
-            try {
-                setLoading(true);
-                const response = await fetch(`http://localhost:3000/api/students/${id}`);
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const data = await response.json();
-                setName(data.name);
-                setUniversity(data.university);
-                setMajor(data.major);
-            } catch (err) {
-                console.error("Error fetching student for edit:", err);
-                setError("Failed to load student data for editing.");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        if (id) { // Only fetch if an ID is present
-            fetchStudent();
+    const fetchStudents = useCallback(async () => {
+        // Get the token from localStorage
+        const token = localStorage.getItem('token');
+        if (!token) {
+            setError("You must be logged in to view students.");
+            setLoading(false);
+            navigate('/login');
+            return;
         }
-    }, [id]); // Re-run if ID changes (though for this page, it won't)
-
-    // Handler for form submission (updating the student)
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setMessage('Updating student data...');
 
         try {
-            const response = await fetch(`http://localhost:3000/api/students/${id}`, {
-                method: 'PUT', // Specify the HTTP method as PUT
+            setLoading(true);
+            setError(null);
+            const response = await fetch('http://localhost:3000/api/protected-students', {
                 headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ name, university, major }),
+                    'Authorization': `Bearer ${token}`
+                }
             });
 
-            if (response.ok) {
-                const updatedStudent = await response.json();
-                setMessage(`Student '${updatedStudent.name}' updated successfully!`);
-                // Redirect to the students list page after a short delay
-                setTimeout(() => navigate('/students'), 2000);
-            } else {
-                const errorData = await response.json();
-                setMessage(`Error: ${errorData.error || 'Failed to update student.'}`);
+            if (response.status === 401 || response.status === 403) {
+                throw new Error("Authentication failed. Please log in again.");
             }
-        } catch (error) {
-            console.error('Network error or server down during update:', error);
-            setMessage('Error: Could not connect to the server for update.');
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data = await response.json();
+            setStudents(data.students || []);
+        } catch (err) {
+            console.error("Error fetching students:", err);
+            setError(err.message || "Failed to load students. Please log in.");
+            if (err.message === "Authentication failed. Please log in again.") {
+                localStorage.removeItem('token');
+                localStorage.removeItem('userEmail');
+                localStorage.removeItem('userId');
+                navigate('/login');
+            }
+        } finally {
+            setLoading(false);
+        }
+    }, [navigate]);
+
+    useEffect(() => {
+        fetchStudents();
+    }, [fetchStudents]);
+
+    const handleEdit = (studentId) => {
+        navigate(`/edit-student/${studentId}`);
+    };
+
+    const handleDelete = async (studentId) => {
+        if (!window.confirm('Are you sure you want to delete this student?')) return;
+
+        const token = localStorage.getItem('token');
+        if (!token) {
+            setDeleteMessage('Error: Not authenticated.');
+            setTimeout(() => setDeleteMessage(''), 3000);
+            navigate('/login');
+            return;
+        }
+
+        setDeleteMessage('Deleting student...');
+        try {
+            const response = await fetch(`http://localhost:3000/api/students/${studentId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.status === 401 || response.status === 403) {
+                throw new Error('Authentication failed. Cannot delete.');
+            }
+
+            if (!response.ok) {
+                const errBody = await response.json().catch(() => ({}));
+                throw new Error(errBody.error || `Delete failed (status ${response.status})`);
+            }
+
+            const result = await response.json();
+            setDeleteMessage('Student deleted successfully.');
+            // Refresh list
+            await fetchStudents();
+        } catch (err) {
+            console.error('Error deleting student:', err);
+            setDeleteMessage(err.message || 'Failed to delete student.');
+        } finally {
+            setTimeout(() => setDeleteMessage(''), 3000);
         }
     };
 
-    if (loading) {
-        return <p style={{ textAlign: 'center', padding: '20px' }}>Loading student data...</p>;
-    }
-
-    if (error) {
-        return <p style={{ textAlign: 'center', padding: '20px', color: 'red' }}>{error}</p>;
-    }
+    if (loading) return <p style={{ textAlign: 'center', padding: '20px' }}>Loading students...</p>;
+    if (error) return <p style={{ textAlign: 'center', padding: '20px', color: 'red' }}>{error}</p>;
 
     return (
-        <div style={{ padding: '20px', maxWidth: '500px', margin: 'auto', border: '1px solid #ccc', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-            <h2 style={{ textAlign: 'center', color: '#2c3e50' }}>Edit Student Profile (ID: {id})</h2>
-            <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                <div>
-                    <label htmlFor="name" style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Student Name:</label>
-                    <input
-                        type="text"
-                        id="name"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        required
-                        style={{ width: '100%', padding: '10px', border: '1px solid #bdc3c7', borderRadius: '4px' }}
-                    />
-                </div>
-                <div>
-                    <label htmlFor="university" style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>University:</label>
-                    <input
-                        type="text"
-                        id="university"
-                        value={university}
-                        onChange={(e) => setUniversity(e.target.value)}
-                        required
-                        style={{ width: '100%', padding: '10px', border: '1px solid #bdc3c7', borderRadius: '4px' }}
-                    />
-                </div>
-                <div>
-                    <label htmlFor="major" style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Major:</label>
-                    <input
-                        type="text"
-                        id="major"
-                        value={major}
-                        onChange={(e) => setMajor(e.target.value)}
-                        required
-                        style={{ width: '100%', padding: '10px', border: '1px solid #bdc3c7', borderRadius: '4px' }}
-                    />
-                </div>
-                <button
-                    type="submit"
-                    style={{
-                        padding: '10px 15px',
-                        backgroundColor: '#2980b9', // A slightly different blue for edit
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: '4px',
-                        cursor: 'pointer',
-                        fontSize: '1em'
-                    }}
-                >
-                    Update Student
-                </button>
-            </form>
-            {message && <p style={{ marginTop: '15px', color: message.startsWith('Error') ? 'red' : 'green', textAlign: 'center' }}>{message}</p>}
+        <div style={{ padding: '20px', maxWidth: '800px', margin: 'auto' }}>
+            <h2 style={{ textAlign: 'center', color: '#2c3e50', marginBottom: '30px' }}>All Registered Students</h2>
+
+            {deleteMessage && <p style={{ textAlign: 'center', color: 'green' }}>{deleteMessage}</p>}
+
+            {!loading && !error && students.length === 0 && (
+                <p style={{ textAlign: 'center', color: '#7f8c8d' }}>
+                    {localStorage.getItem('token') ? 'No students registered yet. ' : 'Please log in to add and view students. '}
+                    <a href="/add-student">Add one now!</a>
+                </p>
+            )}
+
+            {!loading && !error && students.length > 0 && (
+                <ul style={{ listStyle: 'none', padding: 0 }}>
+                    {students.map(student => (
+                        <li key={student.id} style={{
+                            backgroundColor: '#f9f9f9',
+                            border: '1px solid #e0e0e0',
+                            borderRadius: '6px',
+                            marginBottom: '15px',
+                            padding: '15px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center'
+                        }}>
+                            <div>
+                                <h3 style={{ margin: '0 0 5px 0', color: '#34495e' }}>{student.name}</h3>
+                                <p style={{ margin: '0', color: '#7f8c8d' }}>
+                                    <span style={{ fontWeight: 'bold' }}>Major:</span> {student.major} &bull;
+                                    <span style={{ fontWeight: 'bold' }}> University:</span> {student.university}
+                                </p>
+                                <small style={{ color: '#95a5a6' }}>Registered: {new Date(student.created_at).toLocaleDateString()}</small>
+                            </div>
+                            {localStorage.getItem('token') && (
+                                <div>
+                                    <button
+                                        onClick={() => handleEdit(student.id)}
+                                        style={{ background: '#2ecc71', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer', marginRight: '5px' }}
+                                    >
+                                        Edit
+                                    </button>
+                                    <button
+                                        onClick={() => handleDelete(student.id)}
+                                        style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '8px 12px', borderRadius: '4px', cursor: 'pointer' }}
+                                    >
+                                        Delete
+                                    </button>
+                                </div>
+                            )}
+                        </li>
+                    ))}
+                </ul>
+            )}
         </div>
     );
 }
 
-export default EditStudentPage;
+export default StudentsListPage;

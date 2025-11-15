@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt'); // import bcrypt for password hashing
+const jwt = require('jsonwebtoken');
 const app = express();
 const port = 3000;
 const saltRounds = 10; // For bcrypt: the cost factor for hashing
@@ -48,7 +49,7 @@ async function createStudentsTable() {
         console.error('Error creating students table:', err);
     }
 }
-createStudentsTable();
+createStudentsTable(); // Call this function when the server starts
 
 // Create a 'users' table if it doesn't exist
 async function createUsersTable() {
@@ -66,11 +67,30 @@ async function createUsersTable() {
         console.error('Error creating users table:', err);
     }
 }
-createUsersTable(); // Call this function when the server starts
+createUsersTable();
 
 // Middleware:
 app.use(cors());
 app.use(express.json());
+
+// Authentication middleware (placed before protected routes)
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    // Expect header format: "Bearer <token>"
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) {
+        return res.status(401).json({ error: 'Authentication token required.'});
+    }
+
+    jwt.verify(token, process.env.JWT_SECRET, (err, user)=>{
+        if(err){
+            return res.status(403).json({ error: 'Invalid or expired token.'});
+        }
+        req.user = user;
+        next();
+    });
+
+};
 
 // Existing API endpoint (can delete if you prefer)
 app.get('/api/message', (req, res) => {
@@ -88,8 +108,8 @@ app.get('/api/students', async (req, res) => {
     }
 });
 
-// API endpoint to add a new student
-app.post('/api/students', async (req, res) => {
+// API endpoint to add a new student (protected)
+app.post('/api/students', authenticateToken, async (req, res) => {
     const { name, university, major } = req.body;
     if (!name || !university || !major) {
         return res.status(400).json({ error: 'Name, university, and major are required.' });
@@ -107,8 +127,8 @@ app.post('/api/students', async (req, res) => {
 });
 
 
-// API endpoint to delete a student by ID
-app.delete('/api/students/:id', async (req, res) => {
+// API endpoint to delete a student by ID (protected)
+app.delete('/api/students/:id', authenticateToken, async (req, res) => {
     const { id } = req.params; // Extract the ID from the URL parameters
     try {
         const result = await pool.query('DELETE FROM students WHERE id = $1 RETURNING *', [id]);
@@ -124,6 +144,9 @@ app.delete('/api/students/:id', async (req, res) => {
 });
 
 
+// API endpoint to get a single student by ID
+// If you prefer this to be protected, uncomment the protected version below and comment out the public one.
+// app.get('/api/students/:id', authenticateToken, async (req, res) => {
 app.get('/api/students/:id', async (req, res) => {
     const { id } = req.params;
 
@@ -141,7 +164,8 @@ app.get('/api/students/:id', async (req, res) => {
 });
 
 
-app.put('/api/students/:id', async (req, res) => {
+// API endpoint to update a student by ID (protected)
+app.put('/api/students/:id', authenticateToken, async (req, res) => {
     const {id} = req.params;
     const {name, university, major} = req.body;
 
@@ -195,6 +219,73 @@ app.post('/api/register', async (req, res) => {
     } catch (err) {
         console.error('Error during user registration:', err);
         res.status(500).json({ error: 'Internal server error during registration.' });
+    }
+});
+
+
+
+
+// NEW: User Login
+app.post('/api/login', async (req, res)=>{
+    const { email, password } = req.body;
+        if(!email || !password){
+            return res.status(400).json({ error: 'Email and password are required.'})
+        }
+
+        try{
+            const userResult = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+            const user = userResult.rows[0];
+            if(!user){
+                return res.status(401).json({ error: "Invalid email or password." });  
+            }
+
+            const isPasswordValid = await bcrypt.compare(password, user.password_hash);
+            if(!isPasswordValid){
+                return res.status(401).json({error: "Invalid Password"})
+            }
+
+            const token = jwt.sign({
+                userId:user.id,
+                email: user.email},
+                process.env.JWT_SECRET,
+                { expiresIn: '1h'}
+            );
+
+            res.status(200).json({
+                message : "Login successful!", 
+                token, 
+                user:{ 
+                    id: user.id,
+                    email: user.email
+                } 
+                });
+
+            
+        } catch(err){
+            console.error('Error during user login:', err);
+            res.status(500).json({error: 'Internal server error during login.'});
+        }
+});
+
+
+// Example of a protected route (only accessible to authenticated users)
+// You can apply `authenticateToken` to any route you want to protect.
+// For now, let's protect the GET /api/students endpoint
+
+app.get('/api/protected-students', authenticateToken, async (req, res)=>{
+    try{
+        // req.user will contain the payload from the JWT ({ userId: ..., email: ... })
+        console.log('Authenticated user trying to access students:', req.user);
+        const result = await pool.query('SELECT * FROM students ORDER BY created_at DESC');
+
+        res.json({
+            message: `Hello ${req.user.email} , here are the students.`,
+            students: result.rows
+
+        });
+    }catch (err) {
+        console.error('Error fetching students for authenticated user:', err);
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
